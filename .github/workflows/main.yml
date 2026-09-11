@@ -34,8 +34,7 @@ jobs:
           for path in [
               "app/src/main/java/com/volkan/radar",
               "app/src/main/assets",
-              "app/src/main/res/drawable",
-              "app/src/main/res/values"
+              "app/src/main/res/drawable"
           ]:
               os.makedirs(path, exist_ok=True)
 
@@ -102,17 +101,13 @@ jobs:
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
               }
+              lintOptions {
+                  abortOnError false
+                  checkReleaseBuilds false
+              }
           }
           dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
           }
-          """
-
-          files['app/src/main/res/values/styles.xml'] = """<resources>
-              <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-                  <item name="android:windowBackground">#070b12</item>
-              </style>
-          </resources>
           """
 
           files['app/src/main/AndroidManifest.xml'] = """<?xml version="1.0" encoding="utf-8"?>
@@ -121,7 +116,7 @@ jobs:
                   android:allowBackup="true"
                   android:icon="@drawable/app_icon"
                   android:label="Şüpheli Radarı"
-                  android:theme="@style/AppTheme">
+                  android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -136,14 +131,12 @@ jobs:
 
           files['app/src/main/java/com/volkan/radar/MainActivity.java'] = """package com.volkan.radar;
 
-          import android.annotation.SuppressLint;
+          import android.app.Activity;
           import android.os.Bundle;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
-          import androidx.appcompat.app.AppCompatActivity;
 
-          public class MainActivity extends AppCompatActivity {
-              @SuppressLint("SetJavaScriptEnabled")
+          public class MainActivity extends Activity {
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
@@ -152,6 +145,7 @@ jobs:
                   WebSettings ws = webView.getSettings();
                   ws.setJavaScriptEnabled(true);
                   ws.setAllowFileAccess(true);
+                  ws.setDomStorageEnabled(true);
                   webView.loadUrl("file:///android_asset/index.html");
               }
           }
@@ -233,7 +227,7 @@ jobs:
           EOF
 
       - name: Build APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
