@@ -1,0 +1,243 @@
+name: Build Radar APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.5'
+
+      - name: Process Images and Generate Project
+        run: |
+          python3 -m pip install --quiet pillow
+          mkdir -p app/src/main/java/com/volkan/radar
+          mkdir -p app/src/main/assets
+          mkdir -p app/src/main/res/drawable
+          mkdir -p app/src/main/res/values
+
+          python3 - << 'PYEOF'
+          import os
+          from PIL import Image
+
+          for file in os.listdir('.'):
+              name = file.lower()
+              if 'icon' in name and any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.heic', '.webp']):
+                  print(f"Icon bulundu: {file}")
+                  img = Image.open(file).convert('RGBA')
+                  img.save('app/src/main/res/drawable/app_icon.png')
+                  img.save('app/src/main/assets/wanted.png')
+              if 'utku' in name and any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.heic', '.webp']):
+                  print(f"Utku bulundu: {file}")
+                  img = Image.open(file).convert('RGB')
+                  img.save('app/src/main/assets/utku.jpg')
+
+          if not os.path.exists('app/src/main/res/drawable/app_icon.png'):
+              img = Image.new('RGBA', (192, 192), color=(255, 51, 102, 255))
+              img.save('app/src/main/res/drawable/app_icon.png')
+              img.save('app/src/main/assets/wanted.png')
+          if not os.path.exists('app/src/main/assets/utku.jpg'):
+              img = Image.new('RGB', (300, 300), color=(10, 15, 29))
+              img.save('app/src/main/assets/utku.jpg')
+          PYEOF
+
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "radar-app"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.2' apply false
+          }
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.volkan.radar'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.volkan.radar"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/res/values/styles.xml
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
+                  <item name="android:windowBackground">#070b12</item>
+              </style>
+          </resources>
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:allowBackup="true"
+                  android:icon="@drawable/app_icon"
+                  android:label="Şüpheli Radarı"
+                  android:theme="@style/AppTheme">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/assets/index.html
+          <!DOCTYPE html>
+          <html lang="tr">
+          <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+          <style>
+          * { box-sizing: border-box; font-family: -apple-system, sans-serif; }
+          body { margin: 0; background: #070b12; color: #00ffcc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 20px; }
+          h2 { color: #ff3366; letter-spacing: 2px; margin-bottom: 20px; text-shadow: 0 0 10px rgba(255,51,102,0.5); }
+          .radar { width: 220px; height: 220px; border-radius: 50%; border: 3px solid #00ffcc; position: relative; overflow: hidden; margin-bottom: 25px; box-shadow: 0 0 25px rgba(0,255,204,0.25); background: radial-gradient(circle, #0b1d28 0%, #070b12 70%); }
+          .sweep { width: 100%; height: 100%; position: absolute; top: 0; left: 0; background: conic-gradient(from 0deg, transparent 70%, rgba(0,255,204,0.5) 100%); animation: spin 2s linear infinite; border-radius: 50%; }
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          .result-card { display: none; background: #121824; border: 2px solid #ff3366; border-radius: 16px; padding: 16px; max-width: 320px; width: 100%; box-shadow: 0 0 30px rgba(255,51,102,0.4); animation: pop 0.4s ease; }
+          @keyframes pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+          .photos-container { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; }
+          .photos-container img { width: 120px; height: 150px; object-fit: cover; border-radius: 8px; border: 2px solid #ff3366; }
+          .crime-title { color: #ff3366; font-size: 18px; font-weight: 900; margin: 0 0 8px 0; }
+          .crime-desc { color: #fff; font-size: 14px; margin: 4px 0; line-height: 1.4; }
+          .badge { display: inline-block; background: red; color: white; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-top: 8px; }
+          button { background: #ff3366; color: #fff; border: none; padding: 14px 30px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 15px rgba(255,51,102,0.4); }
+          button:active { transform: scale(0.96); }
+          #status { margin-top: 15px; font-size: 14px; color: #00ffcc; min-height: 24px; }
+          </style>
+          </head>
+          <body>
+          <h2>ŞÜPHELİ TESPİT SİSTEMİ</h2>
+          <div class="radar" id="radarBox">
+            <div class="sweep" id="sweep"></div>
+          </div>
+          <div class="result-card" id="resultCard">
+            <div class="photos-container">
+              <img src="wanted.png" alt="Wanted Afişi">
+              <img src="utku.jpg" alt="Şüpheli">
+            </div>
+            <div class="crime-title">HEDEF YAKALANDI!</div>
+            <div class="crime-desc"><strong>Şüpheli:</strong> Utku YALIN UMUR</div>
+            <div class="crime-desc"><strong>Suç:</strong> Volkan'ın TV Uygulamasını Sabote Etmek</div>
+            <div class="badge">GÖRÜLDÜĞÜ YERDE YAKALAYIN</div>
+          </div>
+          <div id="status">Sistem hazır. Taramayı başlatın.</div>
+          <br>
+          <button id="scanBtn" onclick="tara()">ŞÜPHELİYİ TARA</button>
+          <script>
+          function tara() {
+            var btn = document.getElementById('scanBtn');
+            var st = document.getElementById('status');
+            var radar = document.getElementById('radarBox');
+            var card = document.getElementById('resultCard');
+            btn.disabled = true;
+            card.style.display = 'none';
+            radar.style.display = 'block';
+            st.style.color = '#00ffcc';
+            st.innerText = 'Çevredeki sinyaller taranıyor...';
+            setTimeout(function() {
+              st.innerText = 'Yüz tanıma eşleştiriliyor...';
+            }, 1500);
+            setTimeout(function() {
+              radar.style.display = 'none';
+              card.style.display = 'block';
+              st.style.color = '#ff3366';
+              st.innerText = 'DİKKAT: %100 Eşleşme Sağlandı!';
+              btn.disabled = false;
+              btn.innerText = 'YENİDEN TARA';
+            }, 3000);
+          }
+          </script>
+          </body>
+          </html>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/volkan/radar/MainActivity.java
+          package com.volkan.radar;
+
+          import android.annotation.SuppressLint;
+          import android.os.Bundle;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import androidx.appcompat.app.AppCompatActivity;
+
+          public class MainActivity extends AppCompatActivity {
+              @SuppressLint("SetJavaScriptEnabled")
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  WebView webView = new WebView(this);
+                  setContentView(webView);
+                  WebSettings ws = webView.getSettings();
+                  ws.setJavaScriptEnabled(true);
+                  ws.setAllowFileAccess(true);
+                  webView.loadUrl("file:///android_asset/index.html");
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Supheli-Radari-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
