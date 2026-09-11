@@ -22,10 +22,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.5'
+          cache-disabled: true
 
-      - name: Generate Project and Assets
-        shell: python
+      - name: Prepare Project and Images
         run: |
+          python3 -m pip install --quiet pillow
+          python3 - << 'EOF'
           import os
           from PIL import Image
 
@@ -228,6 +230,7 @@ jobs:
           for filename, content in files.items():
               with open(filename, 'w', encoding='utf-8') as f:
                   f.write(content.strip())
+          EOF
 
       - name: Build APK
         run: gradle assembleDebug
