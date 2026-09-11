@@ -23,44 +23,43 @@ jobs:
         with:
           gradle-version: '8.5'
 
-      - name: Process Images and Generate Project
+      - name: Generate Project and Assets
+        shell: python
         run: |
-          python3 -m pip install --quiet pillow
-          mkdir -p app/src/main/java/com/volkan/radar
-          mkdir -p app/src/main/assets
-          mkdir -p app/src/main/res/drawable
-          mkdir -p app/src/main/res/values
-
-          python3 - << 'PYEOF'
           import os
           from PIL import Image
+
+          for path in [
+              "app/src/main/java/com/volkan/radar",
+              "app/src/main/assets",
+              "app/src/main/res/drawable",
+              "app/src/main/res/values"
+          ]:
+              os.makedirs(path, exist_ok=True)
 
           for file in os.listdir('.'):
               name = file.lower()
               if 'icon' in name and any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.heic', '.webp']):
-                  print(f"Icon bulundu: {file}")
                   img = Image.open(file).convert('RGBA')
                   img.save('app/src/main/res/drawable/app_icon.png')
                   img.save('app/src/main/assets/wanted.png')
               if 'utku' in name and any(name.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.heic', '.webp']):
-                  print(f"Utku bulundu: {file}")
                   img = Image.open(file).convert('RGB')
                   img.save('app/src/main/assets/utku.jpg')
 
           if not os.path.exists('app/src/main/res/drawable/app_icon.png'):
-              img = Image.new('RGBA', (192, 192), color=(255, 51, 102, 255))
-              img.save('app/src/main/res/drawable/app_icon.png')
-              img.save('app/src/main/assets/wanted.png')
+              Image.new('RGBA', (192, 192), (255, 51, 102, 255)).save('app/src/main/res/drawable/app_icon.png')
+              Image.new('RGBA', (192, 192), (255, 51, 102, 255)).save('app/src/main/assets/wanted.png')
           if not os.path.exists('app/src/main/assets/utku.jpg'):
-              img = Image.new('RGB', (300, 300), color=(10, 15, 29))
-              img.save('app/src/main/assets/utku.jpg')
-          PYEOF
+              Image.new('RGB', (300, 300), (10, 15, 29)).save('app/src/main/assets/utku.jpg')
 
-          cat << 'EOF' > settings.gradle
-          pluginManagement {
+          files = {}
+
+          files['settings.gradle'] = """pluginManagement {
               repositories {
                   google()
                   mavenCentral()
+                  gradlePluginPortal()
               }
           }
           dependencyResolutionManagement {
@@ -72,16 +71,14 @@ jobs:
           }
           rootProject.name = "radar-app"
           include ':app'
-          EOF
+          """
 
-          cat << 'EOF' > build.gradle
-          plugins {
+          files['build.gradle'] = """plugins {
               id 'com.android.application' version '8.2.2' apply false
           }
-          EOF
+          """
 
-          cat << 'EOF' > app/build.gradle
-          plugins {
+          files['app/build.gradle'] = """plugins {
               id 'com.android.application'
           }
           android {
@@ -107,18 +104,16 @@ jobs:
           dependencies {
               implementation 'androidx.appcompat:appcompat:1.6.1'
           }
-          EOF
+          """
 
-          cat << 'EOF' > app/src/main/res/values/styles.xml
-          <resources>
+          files['app/src/main/res/values/styles.xml'] = """<resources>
               <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
                   <item name="android:windowBackground">#070b12</item>
               </style>
           </resources>
-          EOF
+          """
 
-          cat << 'EOF' > app/src/main/AndroidManifest.xml
-          <?xml version="1.0" encoding="utf-8"?>
+          files['app/src/main/AndroidManifest.xml'] = """<?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application
                   android:allowBackup="true"
@@ -135,10 +130,32 @@ jobs:
                   </activity>
               </application>
           </manifest>
-          EOF
+          """
 
-          cat << 'EOF' > app/src/main/assets/index.html
-          <!DOCTYPE html>
+          files['app/src/main/java/com/volkan/radar/MainActivity.java'] = """package com.volkan.radar;
+
+          import android.annotation.SuppressLint;
+          import android.os.Bundle;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import androidx.appcompat.app.AppCompatActivity;
+
+          public class MainActivity extends AppCompatActivity {
+              @SuppressLint("SetJavaScriptEnabled")
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  WebView webView = new WebView(this);
+                  setContentView(webView);
+                  WebSettings ws = webView.getSettings();
+                  ws.setJavaScriptEnabled(true);
+                  ws.setAllowFileAccess(true);
+                  webView.loadUrl("file:///android_asset/index.html");
+              }
+          }
+          """
+
+          files['app/src/main/assets/index.html'] = """<!DOCTYPE html>
           <html lang="tr">
           <head>
           <meta charset="UTF-8">
@@ -206,31 +223,11 @@ jobs:
           </script>
           </body>
           </html>
-          EOF
+          """
 
-          cat << 'EOF' > app/src/main/java/com/volkan/radar/MainActivity.java
-          package com.volkan.radar;
-
-          import android.annotation.SuppressLint;
-          import android.os.Bundle;
-          import android.webkit.WebSettings;
-          import android.webkit.WebView;
-          import androidx.appcompat.app.AppCompatActivity;
-
-          public class MainActivity extends AppCompatActivity {
-              @SuppressLint("SetJavaScriptEnabled")
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  WebView webView = new WebView(this);
-                  setContentView(webView);
-                  WebSettings ws = webView.getSettings();
-                  ws.setJavaScriptEnabled(true);
-                  ws.setAllowFileAccess(true);
-                  webView.loadUrl("file:///android_asset/index.html");
-              }
-          }
-          EOF
+          for filename, content in files.items():
+              with open(filename, 'w', encoding='utf-8') as f:
+                  f.write(content.strip())
 
       - name: Build APK
         run: gradle assembleDebug
